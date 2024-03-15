@@ -1,25 +1,27 @@
 import Data.Char
 import Data.Either
+import Data.List
+import Data.Maybe
 
 data Term         = Var Int | Function String [Term]
 data Subst        = Subst [Int] (Term -> Term)
 data UnifyFailure = OccurFailure | ClashFailure 
-data VarNames     = VarNames (Int -> String) (String -> Int) Int
+data VarNames     = VarNames [String]
 
 defaultVarNames :: VarNames
-defaultVarNames = VarNames show (const (-1)) 0
+defaultVarNames = VarNames $ map show [0..100]
 
 showTerm :: VarNames -> Term -> String
-showTerm (VarNames nameFct idFct n) (Var v) = nameFct v
-showTerm vn (Function s [])                 = s
-showTerm vn (Function s ts)                 = s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
+showTerm (VarNames names) (Var v) = names !! v
+showTerm vn (Function s [])       = s
+showTerm vn (Function s ts)       = s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
 
 showFailure :: UnifyFailure -> String
 showFailure OccurFailure = "Occur failure"
 showFailure ClashFailure = "Clash failure"
 
 showSubst :: VarNames -> Subst -> String
-showSubst (VarNames nameFct idFct n) (Subst vs f) = concatMap (\v -> nameFct v ++ " = " ++ showTerm (VarNames nameFct idFct n) (f (Var v)) ++ "; ") vs
+showSubst (VarNames names) (Subst vs f) = concatMap (\v -> names !! v ++ " = " ++ showTerm (VarNames names) (f (Var v)) ++ "; ") vs
 
 showUnifyResult :: VarNames -> Either UnifyFailure Subst -> String
 showUnifyResult _ (Left failure) = showFailure failure
@@ -58,12 +60,9 @@ substStep unifyResult (t1, t2) = do Subst vs1 f1 <- unifyResult
                                     Subst vs2 f2 <- unify (f1 t1) (f1 t2)
                                     return $ Subst (vs1 ++ vs2) (f2 . f1)
 
-emptyVarNames :: VarNames
-emptyVarNames = VarNames (\n -> "Error: No variable with id " ++ show n) (const (-1)) 0
-
 unifyStrings :: String -> String -> String
-unifyStrings s1 s2 = let (t1, vn1) = parseTerm emptyVarNames s1
-                         (t2, vn2)  = parseTerm vn1 s2
+unifyStrings s1 s2 = let (t1, vn1) = parseTerm (VarNames []) s1
+                         (t2, vn2) = parseTerm vn1 s2
                      in showUnifyResult vn2 (unify t1 t2) 
 
 parseTerm :: VarNames -> String -> (Term, VarNames)
@@ -91,12 +90,12 @@ parseTerms vn (t:ts) = let (term, vn2) = parseTerm vn t
                        in (term:terms, vnLast)              
 
 parseSingle :: VarNames -> String -> (Term, VarNames)
-parseSingle (VarNames nameFct idFct n) s | isUpper (head s) = parseVar (VarNames nameFct idFct n) s
-                                         | otherwise = parseAtom (VarNames nameFct idFct n) s
+parseSingle vn s | isUpper (head s) = parseVar vn s
+                 | otherwise = parseAtom vn s
 
 parseVar :: VarNames -> String -> (Term, VarNames)
-parseVar (VarNames nameFct idFct n) s | idFct s == -1 = (Var n, VarNames (\x -> if x == n then s else nameFct x) (\x -> if x == s then n else idFct x) (n+1))
-                                      | otherwise     = (Var (idFct s), VarNames nameFct idFct n)
+parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s names), VarNames names)
+                            | otherwise      = (Var (length names), VarNames (names ++ [s]))
 
 parseAtom :: VarNames -> String -> (Term, VarNames)
 parseAtom vn s = (Function s [], vn)
