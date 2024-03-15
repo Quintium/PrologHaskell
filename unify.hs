@@ -9,7 +9,7 @@ data VarNames = VarNames (Int -> String) (String -> Int) Int
 showTerm :: VarNames -> Term -> String
 showTerm (VarNames varToName nameToVar n) (Var v) = varToName v
 showTerm vn (Function s []) = s
-showTerm vn (Function s ts) =  s ++ "(" ++ (concatMap ((++ ", ") . showTerm vn) (init ts)) ++ (showTerm vn (last ts)) ++ ")"
+showTerm vn (Function s ts) =  s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
 
 instance Show Term where
     show :: Term -> String
@@ -72,7 +72,9 @@ unifyStrings s1 s2 = showUnifyResult vn (unify t1 t2)
 parseTerm :: VarNames -> String -> (Term, VarNames)
 parseTerm vn s | ' ' `elem` s = parseTerm vn (filter (/= ' ') s)
                | '(' `notElem` s = parseSingle vn s
-               | otherwise = stepResToParseRes vn (foldl parseStep ("", [], "", 0) s)
+               | otherwise = let (fnName, parts, _, _) = foldl parseStep ("", [], "", 0) s
+                                 (terms, vnLast) = parseTerms vn parts
+                             in (Function fnName terms, vnLast) 
 
 parseStep :: (String, [String], String, Int) -> Char -> (String, [String], String, Int)
 parseStep (fn, parts, s, 0) c        | c == '('  = (fn,        parts,        "",       1           )
@@ -83,12 +85,14 @@ parseStep (fn, parts, s, 1) c        | c == '('  = (fn,        parts,        s +
                                      | otherwise = (fn,        parts,        s ++ [c], 1           )
 parseStep (fn, parts, s, brackets) c | c == '('  = (fn,        parts,        s ++ "(", brackets + 1)
                                      | c == ')'  = (fn,        parts,        s ++ ")", brackets - 1)   
-                                     | otherwise = (fn,        parts,        s ++ [c], brackets    )                 
+                                     | otherwise = (fn,        parts,        s ++ [c], brackets    )   
 
-stepResToParseRes :: VarNames -> (String, [String], String, Int) -> (Term, VarNames)
-stepResToParseRes vn (fn, parts, s, brackets) = (Function fn (map fst (tail convertRes)), snd (last convertRes))
-                                                    where convertRes = scanl (\(prevVar, prevVn) termStr -> parseTerm prevVn termStr) (Var 0, vn) parts
-                            
+parseTerms :: VarNames -> [String] -> ([Term], VarNames)
+parseTerms vn [] = ([], vn)
+parseTerms vn (t:ts) = let (term, vn2) = parseTerm vn t
+                           (terms, vnLast) = parseTerms vn2 ts
+                       in (term:terms, vnLast)              
+
 parseSingle :: VarNames -> String -> (Term, VarNames)
 parseSingle (VarNames varToName nameToVar n) s | isUpper (head s) = parseVar (VarNames varToName nameToVar n) s
                                                | otherwise = parseAtom (VarNames varToName nameToVar n) s
