@@ -91,11 +91,8 @@ parseTerms vn (t:ts) = let (term, vn2) = parseTerm vn t
 
 parseSingle :: VarNames -> String -> (Term, VarNames)
 parseSingle vn s | isUpper (head s) = parseVar vn s
-                 | otherwise = parseAtom vn s
+                 | otherwise        = (Function s [], vn)
 
 parseVar :: VarNames -> String -> (Term, VarNames)
 parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s names), VarNames names)
                             | otherwise      = (Var (length names), VarNames (names ++ [s]))
-
-parseAtom :: VarNames -> String -> (Term, VarNames)
-parseAtom vn s = (Function s [], vn)
