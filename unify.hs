@@ -6,27 +6,24 @@ data Subst = Subst [Int] (Term -> Term)
 data UnifyFailure = OccurFailure | ClashFailure 
 data VarNames = VarNames (Int -> String) (String -> Int) Int
 
+defaultVarNames :: VarNames
+defaultVarNames = VarNames show (const (-1)) 0
+
 showTerm :: VarNames -> Term -> String
 showTerm (VarNames varToName nameToVar n) (Var v) = varToName v
 showTerm vn (Function s []) = s
 showTerm vn (Function s ts) =  s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
 
-instance Show Term where
-    show :: Term -> String
-    show = showTerm (VarNames show (const (-1)) 0)
+showFailure :: UnifyFailure -> String
+showFailure OccurFailure = "Occur failure"
+showFailure ClashFailure = "Clash failure"
+
+showSubst :: VarNames -> Subst -> String
+showSubst (VarNames varToName nameToVar n) (Subst vs f) = concatMap (\v -> varToName v ++ " = " ++ showTerm (VarNames varToName nameToVar n) (f (Var v)) ++ "; ") vs
 
 showUnifyResult :: VarNames -> Either UnifyFailure Subst -> String
-showUnifyResult _ (Left failure) = show failure
-showUnifyResult (VarNames varToName nameToVar n) (Right (Subst vs f)) = concatMap (\v -> varToName v ++ " = " ++ showTerm (VarNames varToName nameToVar n) (f (Var v)) ++ "; ") vs
-
-instance Show Subst where
-    show :: Subst -> String
-    show subst = showUnifyResult (VarNames show (const (-1)) 0) (Right subst)
-
-instance Show UnifyFailure where
-    show :: UnifyFailure -> String
-    show OccurFailure = "Occur failure"
-    show ClashFailure = "Clash failure"
+showUnifyResult _ (Left failure) = showFailure failure
+showUnifyResult vn (Right subst) = showSubst vn subst
 
 unify :: Term -> Term -> Either UnifyFailure Subst
 unify (Var v) t                           = varSubst v t
