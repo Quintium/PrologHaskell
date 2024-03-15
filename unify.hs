@@ -1,25 +1,25 @@
 import Data.Char
 import Data.Either
 
-data Term  = Var Int | Function String [Term]
-data Subst = Subst [Int] (Term -> Term)
+data Term         = Var Int | Function String [Term]
+data Subst        = Subst [Int] (Term -> Term)
 data UnifyFailure = OccurFailure | ClashFailure 
-data VarNames = VarNames (Int -> String) (String -> Int) Int
+data VarNames     = VarNames (Int -> String) (String -> Int) Int
 
 defaultVarNames :: VarNames
 defaultVarNames = VarNames show (const (-1)) 0
 
 showTerm :: VarNames -> Term -> String
-showTerm (VarNames varToName nameToVar n) (Var v) = varToName v
-showTerm vn (Function s []) = s
-showTerm vn (Function s ts) =  s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
+showTerm (VarNames nameFct idFct n) (Var v) = nameFct v
+showTerm vn (Function s [])                 = s
+showTerm vn (Function s ts)                 = s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
 
 showFailure :: UnifyFailure -> String
 showFailure OccurFailure = "Occur failure"
 showFailure ClashFailure = "Clash failure"
 
 showSubst :: VarNames -> Subst -> String
-showSubst (VarNames varToName nameToVar n) (Subst vs f) = concatMap (\v -> varToName v ++ " = " ++ showTerm (VarNames varToName nameToVar n) (f (Var v)) ++ "; ") vs
+showSubst (VarNames nameFct idFct n) (Subst vs f) = concatMap (\v -> nameFct v ++ " = " ++ showTerm (VarNames nameFct idFct n) (f (Var v)) ++ "; ") vs
 
 showUnifyResult :: VarNames -> Either UnifyFailure Subst -> String
 showUnifyResult _ (Left failure) = showFailure failure
@@ -35,7 +35,7 @@ emptySubst = Subst [] id
 
 varEq :: Int -> Term -> Bool
 varEq v (Var v2) = v == v2
-varEq v _ = False
+varEq v _        = False
 
 varSubst :: Int -> Term -> Either UnifyFailure Subst
 varSubst v t | varEq v t  = Right emptySubst
@@ -45,7 +45,7 @@ varSubst v t | varEq v t  = Right emptySubst
                                       s (Function str ts) = Function str (map s ts)
 
 occurs :: Int -> Term -> Bool
-occurs v1 (Var v2) = v1 == v2
+occurs v1 (Var v2)       = v1 == v2
 occurs v (Function s ts) = any (occurs v) ts
 
 fctSubst :: String -> [Term] -> String -> [Term] -> Either UnifyFailure Subst
@@ -62,16 +62,16 @@ emptyVarNames :: VarNames
 emptyVarNames = VarNames (\n -> "Error: No variable with id " ++ show n) (const (-1)) 0
 
 unifyStrings :: String -> String -> String
-unifyStrings s1 s2 = showUnifyResult vn (unify t1 t2) 
-                        where (t2, vn)  = parseTerm vn1 s2
-                              (t1, vn1) = parseTerm emptyVarNames s1
+unifyStrings s1 s2 = let (t1, vn1) = parseTerm emptyVarNames s1
+                         (t2, vn2)  = parseTerm vn1 s2
+                     in showUnifyResult vn2 (unify t1 t2) 
 
 parseTerm :: VarNames -> String -> (Term, VarNames)
-parseTerm vn s | ' ' `elem` s = parseTerm vn (filter (/= ' ') s)
+parseTerm vn s | ' ' `elem` s    = parseTerm vn (filter (/= ' ') s)
                | '(' `notElem` s = parseSingle vn s
-               | otherwise = let (fnName, parts, _, _) = foldl parseStep ("", [], "", 0) s
-                                 (terms, vnLast) = parseTerms vn parts
-                             in (Function fnName terms, vnLast) 
+               | otherwise       = let (fnName, parts, _, _) = foldl parseStep ("", [], "", 0) s
+                                       (terms, vnLast) = parseTerms vn parts
+                                   in (Function fnName terms, vnLast) 
 
 parseStep :: (String, [String], String, Int) -> Char -> (String, [String], String, Int)
 parseStep (fn, parts, s, 0) c        | c == '('  = (fn,        parts,        "",       1           )
@@ -91,12 +91,12 @@ parseTerms vn (t:ts) = let (term, vn2) = parseTerm vn t
                        in (term:terms, vnLast)              
 
 parseSingle :: VarNames -> String -> (Term, VarNames)
-parseSingle (VarNames varToName nameToVar n) s | isUpper (head s) = parseVar (VarNames varToName nameToVar n) s
-                                               | otherwise = parseAtom (VarNames varToName nameToVar n) s
+parseSingle (VarNames nameFct idFct n) s | isUpper (head s) = parseVar (VarNames nameFct idFct n) s
+                                         | otherwise = parseAtom (VarNames nameFct idFct n) s
 
 parseVar :: VarNames -> String -> (Term, VarNames)
-parseVar (VarNames varToName nameToVar n) s | nameToVar s == -1 = (Var n, VarNames (\x -> if x == n then s else varToName x) (\x -> if x == s then n else nameToVar x) (n+1))
-                                            | otherwise         = (Var (nameToVar s), VarNames varToName nameToVar n)
+parseVar (VarNames nameFct idFct n) s | idFct s == -1 = (Var n, VarNames (\x -> if x == n then s else nameFct x) (\x -> if x == s then n else idFct x) (n+1))
+                                      | otherwise     = (Var (idFct s), VarNames nameFct idFct n)
 
 parseAtom :: VarNames -> String -> (Term, VarNames)
 parseAtom vn s = (Function s [], vn)
