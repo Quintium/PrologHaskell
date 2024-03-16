@@ -69,7 +69,7 @@ parseTerm :: VarNames -> String -> (Term, VarNames)
 parseTerm vn s | ' ' `elem` s    = parseTerm vn (filter (/= ' ') s)
                | '(' `notElem` s = parseSingle vn s
                | otherwise       = let (fnName, parts, _, _) = foldl parseStep ("", [], "", 0) s
-                                       (terms, vnLast) = parseTerms vn parts
+                                       (terms, vnLast) = parseChain parseTerm vn parts
                                    in (Function fnName terms, vnLast) 
 
 parseStep :: (String, [String], String, Int) -> Char -> (String, [String], String, Int)
@@ -83,11 +83,12 @@ parseStep (fn, parts, s, brackets) c | c == '('  = (fn,        parts,        s +
                                      | c == ')'  = (fn,        parts,        s ++ ")", brackets - 1)   
                                      | otherwise = (fn,        parts,        s ++ [c], brackets    )   
 
-parseTerms :: VarNames -> [String] -> ([Term], VarNames)
-parseTerms vn [] = ([], vn)
-parseTerms vn (t:ts) = let (term, vn2) = parseTerm vn t
-                           (terms, vnLast) = parseTerms vn2 ts
-                       in (term:terms, vnLast)              
+-- chain multiple parses by using the varnames of the previous element
+parseChain :: (VarNames -> String -> (a, VarNames)) -> VarNames -> [String] -> ([a], VarNames)
+parseChain parse vn []     = ([], vn)
+parseChain parse vn (x:xs) = let (first, vn2)     = parse vn x
+                                 (others, vnLast) = parseChain parse vn2 xs
+                             in (first:others, vnLast)             
 
 parseSingle :: VarNames -> String -> (Term, VarNames)
 parseSingle vn s | isUpper (head s) = parseVar vn s
@@ -96,3 +97,14 @@ parseSingle vn s | isUpper (head s) = parseVar vn s
 parseVar :: VarNames -> String -> (Term, VarNames)
 parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s names), VarNames names)
                             | otherwise      = (Var (length names), VarNames (names ++ [s]))
+
+{-data Knowledge = Knowledge [Rule]
+data Rule = Rule Literal [Literal] VarNames
+data Literal = True | Literal String [Term]
+
+parseProgram :: [String] -> Knowledge
+parseProgram lines = let (rules, vn) = map parseRule lines
+                     in Knowledge rules vn
+
+parseRule :: VarNames -> String -> (Rule, VarNames)
+parseRule vn s = let (effect:cause:_) = -}
