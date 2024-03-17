@@ -100,7 +100,7 @@ parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s name
 
 data Knowledge = Knowledge [Rule] deriving Show
 data Rule = Rule Literal [Literal] VarNames deriving Show
-data Literal = TrueLiteral | Literal Term deriving Show
+data Literal = TrueLiteral | Predicate String [Term] deriving Show
 
 parseProgram :: [String] -> Knowledge
 parseProgram lines =  Knowledge $ map parseRule lines
@@ -112,10 +112,15 @@ splitOn delim (x:xs) | delim`isPrefixOf` (x:xs) = [] : splitOn delim (drop (leng
                                    in (x:first):rest
 
 parseRule :: String -> Rule
-parseRule s | ":-" `isInfixOf` s = let (effect:cause:_)              = splitOn ":-" (init s)
+parseRule s | ":-" `isInfixOf` s = let (effect:cause:_)              = splitOn ":-" (init s) -- init because period at the end is ignored
                                        causes = splitOn "," cause
                                        (effectTerm:causeTerms, vn) = parseChain parseTerm (VarNames []) (effect:causes)
-                                   in Rule (Literal effectTerm) (map Literal causeTerms) vn
+                                   in Rule (termToPredicate vn effectTerm) (map (termToPredicate vn) causeTerms) vn
             | otherwise          = let (term, vn) = parseTerm (VarNames []) (init s)
-                                   in Rule (Literal term) [TrueLiteral] vn
+                                   in Rule (termToPredicate vn term) [TrueLiteral] vn
+
+termToPredicate :: VarNames -> Term -> Literal
+termToPredicate vn (Function s ts)       = Predicate s ts
+termToPredicate (VarNames names) (Var n) = Predicate (names !! n) []
+
 
