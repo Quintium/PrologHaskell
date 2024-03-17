@@ -115,12 +115,18 @@ parseRule :: String -> Rule
 parseRule s | ":-" `isInfixOf` s = let (effect:cause:_)              = splitOn ":-" (init s) -- init because period at the end is ignored
                                        causes = splitOn "," cause
                                        (effectTerm:causeTerms, vn) = parseChain parseTerm (VarNames []) (effect:causes)
-                                   in Rule (termToPredicate vn effectTerm) (map (termToPredicate vn) causeTerms) vn
+                                   in Rule (termToLiteral vn effectTerm) (map (termToLiteral vn) causeTerms) vn
             | otherwise          = let (term, vn) = parseTerm (VarNames []) (init s)
-                                   in Rule (termToPredicate vn term) [TrueLiteral] vn
+                                   in Rule (termToLiteral vn term) [TrueLiteral] vn
 
-termToPredicate :: VarNames -> Term -> Literal
-termToPredicate vn (Function s ts)       = Predicate s ts
-termToPredicate (VarNames names) (Var n) = Predicate (names !! n) []
+termToLiteral :: VarNames -> Term -> Literal
+termToLiteral _ (Function "true" [])   = TrueLiteral
+termToLiteral _ (Function s ts)        = Predicate s ts
+termToLiteral (VarNames names) (Var n) = Predicate (names !! n) []
 
+{-queryString :: Knowledge -> String -> String
+queryString k s = let (term, vn) = parseTerm (VarNames []) (init s)
+                  in showSubst vn (query k (termToLiteral vn term)) 
+
+query :: Knowledge -> Literal -> Subst-}
 
