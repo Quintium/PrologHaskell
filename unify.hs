@@ -100,7 +100,7 @@ parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s name
 
 data Knowledge = Knowledge [Rule] deriving Show
 data Rule = Rule Literal [Literal] VarNames deriving Show
-data Literal = TrueLiteral | Predicate String [Term] deriving Show
+data Literal = TrueLiteral | Predicate Term deriving Show
 
 parseProgram :: [String] -> Knowledge
 parseProgram lines =  Knowledge $ map parseRule lines
@@ -121,12 +121,12 @@ parseRule s | ":-" `isInfixOf` s = let (effect:cause:_)              = splitOn "
 
 termToLiteral :: VarNames -> Term -> Literal
 termToLiteral _ (Function "true" [])   = TrueLiteral
-termToLiteral _ (Function s ts)        = Predicate s ts
-termToLiteral (VarNames names) (Var n) = Predicate (names !! n) []
+termToLiteral _ (Function s ts)        = Predicate (Function s ts)
+termToLiteral (VarNames names) (Var n) = Predicate (Function (names !! n) [])
 
-{-queryString :: Knowledge -> String -> String
+queryString :: Knowledge -> String -> String
 queryString k s = let (term, vn) = parseTerm (VarNames []) (init s)
                   in showSubst vn (query k (termToLiteral vn term)) 
 
-query :: Knowledge -> Literal -> Subst-}
-
+query :: Knowledge -> Literal -> Subst
+query k l = Subst [] ( const (Var 0))
