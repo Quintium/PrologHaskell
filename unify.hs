@@ -3,10 +3,10 @@ import Data.Either
 import Data.List
 import Data.Maybe
 
-data Term         = Var Int | Function String [Term]
+data Term         = Var Int | Function String [Term] deriving Show
 data Subst        = Subst [Int] (Term -> Term)
-data UnifyFailure = OccurFailure | ClashFailure 
-data VarNames     = VarNames [String]
+data UnifyFailure = OccurFailure | ClashFailure
+data VarNames     = VarNames [String] deriving Show
 
 defaultVarNames :: VarNames
 defaultVarNames = VarNames $ map show [0..100]
@@ -98,13 +98,24 @@ parseVar :: VarNames -> String -> (Term, VarNames)
 parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s names), VarNames names)
                             | otherwise      = (Var (length names), VarNames (names ++ [s]))
 
-{-data Knowledge = Knowledge [Rule]
-data Rule = Rule Literal [Literal] VarNames
-data Literal = True | Literal String [Term]
+data Knowledge = Knowledge [Rule] deriving Show
+data Rule = Rule Literal [Literal] VarNames deriving Show
+data Literal = TrueLiteral | Literal Term deriving Show
 
 parseProgram :: [String] -> Knowledge
-parseProgram lines = let (rules, vn) = map parseRule lines
-                     in Knowledge rules vn
+parseProgram lines =  Knowledge $ map parseRule lines
 
-parseRule :: VarNames -> String -> (Rule, VarNames)
-parseRule vn s = let (effect:cause:_) = -}
+splitOn :: Eq a => [a] -> [a] -> [[a]]
+splitOn delim [] = [[]]
+splitOn delim (x:xs) | delim`isPrefixOf` (x:xs) = [] : splitOn delim (drop (length delim) (x:xs))
+                     | otherwise = let (first:rest) = splitOn delim xs
+                                   in (x:first):rest
+
+parseRule :: String -> Rule
+parseRule s | ":-" `isInfixOf` s = let (effect:cause:_)              = splitOn ":-" (init s)
+                                       causes = splitOn "," cause
+                                       (effectTerm:causeTerms, vn) = parseChain parseTerm (VarNames []) (effect:causes)
+                                   in Rule (Literal effectTerm) (map Literal causeTerms) vn
+            | otherwise          = let (term, vn) = parseTerm (VarNames []) (init s)
+                                   in Rule (Literal term) [TrueLiteral] vn
+
