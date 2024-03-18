@@ -107,7 +107,7 @@ parseProgram lines =  Knowledge $ map parseRule lines
 
 splitOn :: Eq a => [a] -> [a] -> [[a]]
 splitOn delim [] = [[]]
-splitOn delim (x:xs) | delim`isPrefixOf` (x:xs) = [] : splitOn delim (drop (length delim) (x:xs))
+splitOn delim (x:xs) | delim `isPrefixOf` (x:xs) = [] : splitOn delim (drop (length delim) (x:xs))
                      | otherwise = let (first:rest) = splitOn delim xs
                                    in (x:first):rest
 
@@ -125,8 +125,9 @@ termToLiteral _ (Function s ts)        = Predicate (Function s ts)
 termToLiteral (VarNames names) (Var n) = Predicate (Function (names !! n) [])
 
 queryString :: Knowledge -> String -> String
-queryString k s = let (term, vn) = parseTerm (VarNames []) (init s)
-                  in showSubst vn (query k (termToLiteral vn term)) 
+queryString k s = let (terms, vn) = parseChain parseTerm (VarNames []) (splitOn "," (init s))
+                  in showSubst vn (solve k (map (termToLiteral vn) terms)) 
 
-query :: Knowledge -> Literal -> Subst
-query k l = Subst [] ( const (Var 0))
+solve :: Knowledge -> [Literal] -> Subst
+solve _ [] = emptySubst
+solve _ (TrueLiteral:ls) = emptySubst
