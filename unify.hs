@@ -4,6 +4,7 @@ import Control.Monad.Reader
 import Data.List
 import Data.Maybe
 import Control.Applicative
+import Control.Monad.State
 
 data Term         = Var Int | Function String [Term] deriving Show
 data Subst        = Subst [Int] (Term -> Term)
@@ -65,13 +66,6 @@ substStep :: Either UnifyFailure Subst -> (Term, Term) -> Either UnifyFailure Su
 substStep unifyResult (t1, t2) = do Subst vs1 f1 <- unifyResult
                                     Subst vs2 f2 <- unify (f1 t1) (f1 t2)
                                     return $ Subst (vs1 ++ vs2) (f2 . f1)
-
-{-}
-unifyStrings :: String -> String -> String
-unifyStrings s1 s2 = let (t1, vn1) = parseTerm (VarNames []) s1
-                         (t2, vn2) = parseTerm vn1 s2
-                     in showUnifyResult vn2 (unify t1 t2) 
-                     -}
 
 data TermP = FunctionP String [TermP] deriving Show
 
@@ -148,3 +142,35 @@ functionP = FunctionP <$> (expressionP <* spaceP <* charP '(' <* spaceP) <*> sep
 
 termP :: Parser TermP
 termP = spaceP *> (atomP <|> functionP) <* spaceP
+
+processTerm :: TermP -> State VarNames Term
+processTerm (FunctionP name []) | isUpper (head name) = do 
+    (VarNames vn) <- get
+    if name `elem` vn
+        then return $ Var (fromJust (elemIndex name vn))
+        else do put (VarNames (vn ++ [name]))
+                return $ Var (length vn)
+                              | otherwise = return $ Function name []
+processTerm (FunctionP name args) = do 
+    args' <- mapM processTerm args
+    return $ Function name args'
+
+parseTerm :: String -> Maybe (State VarNames Term)
+parseTerm s = do
+    (tp, "") <- runParser termP s -- fails if string not completely parsed
+    return $ processTerm tp
+
+unifyStrings :: String -> String -> String
+unifyStrings s1 s2 = let res = do
+                            t1 <- parseTerm s1
+                            t2 <- parseTerm s2
+                            return (t1, t2)
+                     in f res
+
+f :: Maybe (State VarNames Term, State VarNames Term) -> String
+f Nothing = "Parse error"
+f (Just (t1, t2)) = runReader (showUnifyResult res) vn 
+    where (res, vn) = runState (do
+            t1' <- t1
+            t2' <- t2
+            return $ unify t1' t2') (VarNames [])
