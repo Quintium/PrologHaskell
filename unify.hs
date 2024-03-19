@@ -71,21 +71,23 @@ data TermP = FunctionP String [TermP] deriving Show
 
 newtype Parser a = Parser {runParser :: String -> Maybe (a, String)}
 
+instance Monad Parser where
+    (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+    (Parser p) >>= f = Parser p'
+        where p' s = do (x1, rest1) <- p s
+                        runParser (f x1) rest1
+
 instance Functor Parser where
     fmap :: (a -> b) -> Parser a -> Parser b
-    fmap f (Parser p) = Parser p' 
-        where p' s = do (x, rest) <- p s
-                        return (f x, rest)
+    fmap = liftM
 
 instance Applicative Parser where
     pure :: a -> Parser a
     pure x = Parser (\s -> Just (x, s))
 
     (<*>) :: Parser (a -> b) -> Parser a -> Parser b
-    (Parser p1) <*> (Parser p2) = Parser p'
-        where p' s = do (x1, rest1) <- p1 s
-                        (x2, rest2) <- p2 rest1
-                        return (x1 x2, rest2)
+    p1 <*> p2 = do f <- p1
+                   f <$> p2
 
 instance Alternative Parser where
     empty :: Parser a
@@ -96,12 +98,6 @@ instance Alternative Parser where
         where p' s = case (p1 s, p2 s) of
                           (Just (x1, r1), Just (x2, r2)) -> if length r1 <= length r2 then p1 s else p2 s
                           (x1, x2) -> x1 <|> x2
-
-instance Monad Parser where
-    (>>=) :: Parser a -> (a -> Parser b) -> Parser b
-    (Parser p) >>= f = Parser p'
-        where p' s = do (x1, rest1) <- p s
-                        runParser (f x1) rest1
 
 oneP :: (Char -> Bool) -> Parser Char
 oneP f = Parser p
@@ -150,7 +146,7 @@ processTerm (FunctionP name []) | isUpper (head name) = do
         then return $ Var (fromJust (elemIndex name vn))
         else do put (VarNames (vn ++ [name]))
                 return $ Var (length vn)
-                              | otherwise = return $ Function name []
+                                | otherwise = return $ Function name []
 processTerm (FunctionP name args) = do 
     args' <- mapM processTerm args
     return $ Function name args'
