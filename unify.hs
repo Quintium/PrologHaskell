@@ -161,16 +161,11 @@ parseTerm s = do
     return $ processTerm tp
 
 unifyStrings :: String -> String -> String
-unifyStrings s1 s2 = let res = do
-                            t1 <- parseTerm s1
-                            t2 <- parseTerm s2
-                            return (t1, t2)
-                     in f res
+unifyStrings s1 s2 = fromMaybe "Parse error" $ do
+    t1 <- parseTerm s1
+    t2 <- parseTerm s2
+    let (res, vn) = runState (unify <$> t1 <*> t2) (VarNames [])
+    return $ runReader (showUnifyResult res) vn
 
-f :: Maybe (State VarNames Term, State VarNames Term) -> String
-f Nothing = "Parse error"
-f (Just (t1, t2)) = runReader (showUnifyResult res) vn 
-    where (res, vn) = runState (do
-            t1' <- t1
-            t2' <- t2
-            return $ unify t1' t2') (VarNames [])
+
+    
