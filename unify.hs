@@ -104,7 +104,8 @@ oneP f = Parser p
           p _              = Nothing
 
 manyP :: (Char -> Bool) -> Parser String
-manyP f = many (oneP f)
+manyP f = Parser p
+    where p s = Just $ span f s 
 
 guarantee :: Parser a -> Parser a
 guarantee p = Parser p'
@@ -112,7 +113,10 @@ guarantee p = Parser p'
                     return (x, s)
 
 someP :: (Char -> Bool) -> Parser String
-someP f = some (oneP f)
+someP f = Parser p
+    where p "" = Nothing
+          p (c:rest) | f c = Just $ span f (c:rest)
+                     | otherwise = Nothing 
 
 charP :: Char -> Parser Char
 charP c = oneP (== c)
@@ -124,7 +128,7 @@ spaceP :: Parser String
 spaceP = manyP isSpace
 
 expressionP :: Parser String
-expressionP = someP (`notElem` "(),:- ")
+expressionP = someP (`notElem` "(),.:- \n")
 
 atomP :: Parser TermP
 atomP = (`FunctionP` []) <$> expressionP
