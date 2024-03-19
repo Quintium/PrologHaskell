@@ -3,6 +3,7 @@ import Data.Either
 import Control.Monad.Reader
 import Data.List
 import Data.Maybe
+import Control.Applicative
 
 data Term         = Var Int | Function String [Term] deriving Show
 data Subst        = Subst [Int] (Term -> Term)
@@ -65,40 +66,85 @@ substStep unifyResult (t1, t2) = do Subst vs1 f1 <- unifyResult
                                     Subst vs2 f2 <- unify (f1 t1) (f1 t2)
                                     return $ Subst (vs1 ++ vs2) (f2 . f1)
 
+{-}
 unifyStrings :: String -> String -> String
 unifyStrings s1 s2 = let (t1, vn1) = parseTerm (VarNames []) s1
                          (t2, vn2) = parseTerm vn1 s2
                      in showUnifyResult vn2 (unify t1 t2) 
+                     -}
 
-parseTerm :: VarNames -> String -> (Term, VarNames)
-parseTerm vn s | ' ' `elem` s    = parseTerm vn (filter (/= ' ') s)
-               | '(' `notElem` s = parseSingle vn s
-               | otherwise       = let (fnName, parts, _, _) = foldl parseStep ("", [], "", 0) s
-                                       (terms, vnLast) = parseChain parseTerm vn parts
-                                   in (Function fnName terms, vnLast) 
+data TermP = FunctionP String [TermP] deriving Show
 
-parseStep :: (String, [String], String, Int) -> Char -> (String, [String], String, Int)
-parseStep (fn, parts, s, 0) c        | c == '('  = (fn,        parts,        "",       1           )
-                                     | otherwise = (fn ++ [c], parts,        s,        0           )
-parseStep (fn, parts, s, 1) c        | c == '('  = (fn,        parts,        s ++ "(", 2           )
-                                     | c == ')'  = (fn,        parts ++ [s], "",       0           )
-                                     | c == ','  = (fn,        parts ++ [s], "",       1           )
-                                     | otherwise = (fn,        parts,        s ++ [c], 1           )
-parseStep (fn, parts, s, brackets) c | c == '('  = (fn,        parts,        s ++ "(", brackets + 1)
-                                     | c == ')'  = (fn,        parts,        s ++ ")", brackets - 1)   
-                                     | otherwise = (fn,        parts,        s ++ [c], brackets    )   
+newtype Parser a = Parser {runParser :: String -> Maybe (a, String)}
 
--- chain multiple parses by using the varnames of the previous element
-parseChain :: (VarNames -> String -> (a, VarNames)) -> VarNames -> [String] -> ([a], VarNames)
-parseChain parse vn []     = ([], vn)
-parseChain parse vn (x:xs) = let (first, vn2)     = parse vn x
-                                 (others, vnLast) = parseChain parse vn2 xs
-                             in (first:others, vnLast)             
+instance Functor Parser where
+    fmap :: (a -> b) -> Parser a -> Parser b
+    fmap f (Parser p) = Parser p' 
+        where p' s = do (x, rest) <- p s
+                        return (f x, rest)
 
-parseSingle :: VarNames -> String -> (Term, VarNames)
-parseSingle vn s | isUpper (head s) = parseVar vn s
-                 | otherwise        = (Function s [], vn)
+instance Applicative Parser where
+    pure :: a -> Parser a
+    pure x = Parser (\s -> Just (x, s))
 
-parseVar :: VarNames -> String -> (Term, VarNames)
-parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s names), VarNames names)
-                            | otherwise      = (Var (length names), VarNames (names ++ [s]))
+    (<*>) :: Parser (a -> b) -> Parser a -> Parser b
+    (Parser p1) <*> (Parser p2) = Parser p'
+        where p' s = do (x1, rest1) <- p1 s
+                        (x2, rest2) <- p2 rest1
+                        return (x1 x2, rest2)
+
+instance Alternative Parser where
+    empty :: Parser a
+    empty = Parser $ const Nothing
+
+    (<|>) :: Parser a -> Parser a -> Parser a
+    (Parser p1) <|> (Parser p2) = Parser p'
+        where p' s = case (p1 s, p2 s) of
+                          (Just (x1, r1), Just (x2, r2)) -> if length r1 <= length r2 then p1 s else p2 s
+                          (x1, x2) -> x1 <|> x2
+
+instance Monad Parser where
+    (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+    (Parser p) >>= f = Parser p'
+        where p' s = do (x1, rest1) <- p s
+                        runParser (f x1) rest1
+
+oneP :: (Char -> Bool) -> Parser Char
+oneP f = Parser p
+    where p (c:rest) | f c = Just (c, rest)
+          p _              = Nothing
+
+manyP :: (Char -> Bool) -> Parser String
+manyP f = many (oneP f)
+
+guarantee :: Parser a -> Parser a
+guarantee p = Parser p'
+    where p' s = do (x, _) <- runParser p s
+                    return (x, s)
+
+someP :: (Char -> Bool) -> Parser String
+someP f = some (oneP f)
+
+charP :: Char -> Parser Char
+charP c = oneP (== c)
+
+stringP :: String -> Parser String
+stringP = mapM charP
+
+spaceP :: Parser String
+spaceP = manyP isSpace
+
+expressionP :: Parser String
+expressionP = someP (`notElem` "(), ")
+
+atomP :: Parser TermP
+atomP = (\s -> FunctionP s []) <$> expressionP
+
+sepBy :: Parser a -> Parser b -> Parser [b]
+sepBy delim p = ((:) <$> p <*> many (delim *> p)) <|> pure []
+
+functionP :: Parser TermP
+functionP = FunctionP <$> (expressionP <* spaceP <* charP '(' <* spaceP) <*> sepBy (charP ',') termP <* charP ')'
+
+termP :: Parser TermP
+termP = spaceP *> (atomP <|> functionP) <* spaceP
