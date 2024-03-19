@@ -1,5 +1,6 @@
 import Data.Char
 import Data.Either
+import Control.Monad.Reader
 import Data.List
 import Data.Maybe
 
@@ -11,21 +12,25 @@ data VarNames     = VarNames [String] deriving Show
 defaultVarNames :: VarNames
 defaultVarNames = VarNames $ map show [0..100]
 
-showTerm :: VarNames -> Term -> String
-showTerm (VarNames names) (Var v) = names !! v
-showTerm vn (Function s [])       = s
-showTerm vn (Function s ts)       = s ++ "(" ++ concatMap ((++ ", ") . showTerm vn) (init ts) ++ showTerm vn (last ts) ++ ")"
+showTerm :: Term -> Reader VarNames String
+showTerm (Var v)         = do VarNames names <- ask
+                              return $ names !! v
+showTerm (Function s []) = return s
+showTerm (Function s ts) = do ts' <- mapM showTerm ts
+                              return $ s ++ "(" ++ intercalate ", " ts' ++ ")"
 
 showFailure :: UnifyFailure -> String
 showFailure OccurFailure = "Occur failure"
 showFailure ClashFailure = "Clash failure"
 
-showSubst :: VarNames -> Subst -> String
-showSubst (VarNames names) (Subst vs f) = concatMap (\v -> names !! v ++ " = " ++ showTerm (VarNames names) (f (Var v)) ++ "; ") vs
+showSubst :: Subst -> Reader VarNames String
+showSubst (Subst vs f) = do VarNames names <- ask
+                            ts <- mapM (showTerm . f . Var) vs
+                            return $ intercalate "; " (zipWith (\v t -> names !! v ++ " = " ++ t) vs ts)
 
-showUnifyResult :: VarNames -> Either UnifyFailure Subst -> String
-showUnifyResult _ (Left failure) = showFailure failure
-showUnifyResult vn (Right subst) = showSubst vn subst
+showUnifyResult :: Either UnifyFailure Subst -> Reader VarNames String
+showUnifyResult (Left failure) = return (showFailure failure)
+showUnifyResult (Right subst) = showSubst subst
 
 unify :: Term -> Term -> Either UnifyFailure Subst
 unify (Var v) t                           = varSubst v t
@@ -97,37 +102,3 @@ parseSingle vn s | isUpper (head s) = parseVar vn s
 parseVar :: VarNames -> String -> (Term, VarNames)
 parseVar (VarNames names) s | s `elem` names = (Var $ fromJust (elemIndex s names), VarNames names)
                             | otherwise      = (Var (length names), VarNames (names ++ [s]))
-
-data Knowledge = Knowledge [Rule] deriving Show
-data Rule = Rule Literal [Literal] VarNames deriving Show
-data Literal = TrueLiteral | Predicate Term deriving Show
-
-parseProgram :: [String] -> Knowledge
-parseProgram lines =  Knowledge $ map parseRule lines
-
-splitOn :: Eq a => [a] -> [a] -> [[a]]
-splitOn delim [] = [[]]
-splitOn delim (x:xs) | delim `isPrefixOf` (x:xs) = [] : splitOn delim (drop (length delim) (x:xs))
-                     | otherwise = let (first:rest) = splitOn delim xs
-                                   in (x:first):rest
-
-parseRule :: String -> Rule
-parseRule s | ":-" `isInfixOf` s = let (effect:cause:_)              = splitOn ":-" (init s) -- init because period at the end is ignored
-                                       causes = splitOn "," cause
-                                       (effectTerm:causeTerms, vn) = parseChain parseTerm (VarNames []) (effect:causes)
-                                   in Rule (termToLiteral vn effectTerm) (map (termToLiteral vn) causeTerms) vn
-            | otherwise          = let (term, vn) = parseTerm (VarNames []) (init s)
-                                   in Rule (termToLiteral vn term) [TrueLiteral] vn
-
-termToLiteral :: VarNames -> Term -> Literal
-termToLiteral _ (Function "true" [])   = TrueLiteral
-termToLiteral _ (Function s ts)        = Predicate (Function s ts)
-termToLiteral (VarNames names) (Var n) = Predicate (Function (names !! n) [])
-
-queryString :: Knowledge -> String -> String
-queryString k s = let (terms, vn) = parseChain parseTerm (VarNames []) (splitOn "," (init s))
-                  in showSubst vn (solve k (map (termToLiteral vn) terms)) 
-
-solve :: Knowledge -> [Literal] -> Subst
-solve _ [] = emptySubst
-solve _ (TrueLiteral:ls) = emptySubst
