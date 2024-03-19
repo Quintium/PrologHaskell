@@ -1,0 +1,10 @@
+person(jgi).
+person(dcl).
+person(jck).
+person(nlo).
+person(eme).
+person(dbl).
+person(spe).
+person(fai).
+person(ner).
+person(mus).

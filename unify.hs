@@ -1,5 +1,4 @@
 import Data.Char
-import Data.Either
 import Control.Monad.Reader
 import Data.List
 import Data.Maybe
@@ -125,10 +124,10 @@ spaceP :: Parser String
 spaceP = manyP isSpace
 
 expressionP :: Parser String
-expressionP = someP (`notElem` "(), ")
+expressionP = someP (`notElem` "(),:- ")
 
 atomP :: Parser TermP
-atomP = (\s -> FunctionP s []) <$> expressionP
+atomP = (`FunctionP` []) <$> expressionP
 
 sepBy :: Parser a -> Parser b -> Parser [b]
 sepBy delim p = ((:) <$> p <*> many (delim *> p)) <|> pure []
@@ -163,5 +162,36 @@ unifyStrings s1 s2 = fromMaybe "Parse error" $ do
     let (res, vn) = runState (unify <$> t1 <*> t2) (VarNames [])
     return $ runReader (showUnifyResult res) vn
 
+data Knowledge = Knowledge [Rule] deriving Show
+data Rule = Rule Literal [Literal] VarNames deriving Show
+data Literal = TrueLiteral | Predicate Term deriving Show
 
-    
+data ProgramP = ProgramP [RuleP] deriving Show
+data RuleP = RuleP LiteralP [LiteralP] | EmptyRuleP deriving Show
+data LiteralP = TrueLiteralP | PredicateP TermP deriving Show
+
+headP :: Parser LiteralP
+headP = PredicateP <$> termP
+
+tailP :: Parser LiteralP
+tailP = (TrueLiteralP <$ (spaceP *> stringP "true" <* spaceP)) <|> headP
+
+factP :: Parser RuleP
+factP = (`RuleP` []) <$> headP <* charP '.'
+
+ruleP :: Parser RuleP
+ruleP = RuleP <$> (headP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') tailP <* charP '.' <* spaceP
+
+programP :: Parser ProgramP
+programP = ProgramP <$> sepBy (charP '\n') (factP <|> ruleP <|> (EmptyRuleP <$ spaceP))
+
+parseFile :: String -> IO (Maybe ProgramP)
+parseFile path = do text <- readFile path
+                    let res = do (program, "") <- runParser programP text
+                                 return program
+                    return res
+
+main :: IO ()
+main = do print "Parsing"
+          program <- parseFile "aufgabe7.pl"
+          print program
