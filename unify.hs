@@ -1,7 +1,9 @@
 import Data.Char
 import Control.Monad.Reader
+import Control.Monad.Writer
 import Data.List
 import Data.Maybe
+import Control.Monad.Trans.Maybe
 import Control.Applicative
 import Control.Monad.State
 
@@ -62,9 +64,9 @@ fctSubst s1 ts1 s2 ts2 | s1 /= s2                 = Left ClashFailure
                        | otherwise                = foldl substStep (Right emptySubst) (zip ts1 ts2)
 
 substStep :: Either UnifyFailure Subst -> (Term, Term) -> Either UnifyFailure Subst
-substStep unifyResult (t1, t2) = do Subst vs1 f1 <- unifyResult
-                                    Subst vs2 f2 <- unify (f1 t1) (f1 t2)
-                                    return $ Subst (vs1 ++ vs2) (f2 . f1)
+substStep unifyResult (t1, t2) = do s1 <- unifyResult
+                                    s2 <- unify (applySubst s1 t1) (applySubst s1 t2)
+                                    return $ chainSubst s1 s2
 
 data TermP = FunctionP String [TermP] deriving Show
 
@@ -155,38 +157,57 @@ unifyStrings s1 s2 = fromMaybe "Parse error" $ do
     let (res, vn) = runState (unify <$> t1 <*> t2) (VarNames [])
     return $ runReader (showUnifyResult res) vn
 
-data Program = Knowledge [Rule] deriving Show
-data Rule = Rule Literal [Literal] VarNames deriving Show
-data Literal = TrueLiteral | Predicate Term deriving Show
+data Program = Program [Rule] deriving Show
+data Rule = Rule Term [Term] deriving Show
+data Query = Query [Term] VarNames deriving Show
 
 data ProgramP = ProgramP [RuleP] deriving Show
-data RuleP = RuleP LiteralP [LiteralP] deriving Show
-data LiteralP = TrueLiteralP | PredicateP TermP deriving Show
-
-headP :: Parser LiteralP
-headP = PredicateP <$> termP
-
-tailP :: Parser LiteralP
-tailP = (TrueLiteralP <$ (spaceP *> stringP "true" <* spaceP)) <|> headP
+data RuleP = RuleP TermP [TermP] deriving Show
+data QueryP = QueryP [TermP] deriving Show
 
 factP :: Parser RuleP
-factP = (`RuleP` [TrueLiteralP]) <$> headP <* charP '.'
+factP = (`RuleP` []) <$> termP <* charP '.'
 
 ruleP :: Parser RuleP
-ruleP = RuleP <$> (headP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') tailP <* charP '.'
+ruleP = RuleP <$> (termP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') termP <* charP '.'
 
 programP :: Parser ProgramP
 programP = ProgramP <$> sepBy spaceP (ruleP <|> factP)
 
+queryP :: Parser QueryP
+queryP = spaceP *> (QueryP <$> sepBy (charP ',') termP) <* spaceP
+
 processProgram :: ProgramP -> Program
-processProgram (ProgramP rules) = Knowledge $ map processRule rules
+processProgram (ProgramP rules) = Program $ map processRule rules
 
 processRule :: RuleP -> Rule
-processRule (RuleP head tails) = (\((a, b), c)->Rule a b c) $ runState ((,) <$> processLiteral head <*> mapM processLiteral tails) (VarNames [])
+processRule (RuleP head tails) = evalState (Rule <$> processTerm head <*> mapM processTerm tails) (VarNames [])
 
-processLiteral :: LiteralP -> State VarNames Literal
-processLiteral TrueLiteralP = return TrueLiteral
-processLiteral (PredicateP term) = Predicate <$> processTerm term
+processQuery :: QueryP -> Query
+processQuery (QueryP ts) = let (terms, vn) = runState (mapM processTerm ts) (VarNames []) 
+                           in Query terms vn
+
+chainSubst :: Subst -> Subst -> Subst
+chainSubst (Subst vs1 f1) (Subst vs2 f2) = Subst (vs1 ++ vs2) (f1 . f2)
+
+solve :: Program -> [Term] -> [Subst]
+solve _ [] = [emptySubst]
+solve (Program rules) (q:qs) = concat $ catMaybes [solveRule r | r <- rules]
+    where solveRule rule = do (subst, qs') <- applyRule rule q
+                              return $ (`chainSubst` subst) <$> solve (Program rules) (qs' ++ qs)
+
+applySubst :: Subst -> Term -> Term
+applySubst (Subst _ f) = f
+                                                                                                                  
+eitherToMaybe :: Either a b -> Maybe b
+eitherToMaybe (Left _) = Nothing
+eitherToMaybe (Right x) = Just x
+
+applyRule :: Rule -> Term -> Maybe (Subst, [Term])
+applyRule (Rule head tails) q = eitherToMaybe res
+    where res = do subst <- unify head q
+                   return (subst, map (applySubst subst) tails)
+                                      
 
 parseFile :: String -> IO (Maybe Program)
 parseFile path = do text <- readFile path
@@ -194,7 +215,11 @@ parseFile path = do text <- readFile path
                                  return $ processProgram program
                     return res
 
-main :: IO ()
-main = do print "Parsing"
-          program <- parseFile "aufgabe7.pl"
-          print program
+solveQuery :: Program -> String -> Maybe [String]
+solveQuery p s = do (qp, rest) <- runParser queryP s
+                    let (Query ts vn) = processQuery qp
+                    let substs = solve p ts
+                    return $ map (\subst -> runReader (showSubst subst) defaultVarNames) substs
+                    
+consultFile :: String -> String -> IO (Maybe [String])
+consultFile path q = (\mP -> mP >>= (`solveQuery` q)) <$> parseFile path
