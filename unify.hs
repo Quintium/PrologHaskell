@@ -155,7 +155,7 @@ unifyStrings s1 s2 = fromMaybe "Parse error" $ do
     let (res, vn) = runState (unify <$> t1 <*> t2) (VarNames [])
     return $ runReader (showUnifyResult res) vn
 
-data Knowledge = Knowledge [Rule] deriving Show
+data Program = Knowledge [Rule] deriving Show
 data Rule = Rule Literal [Literal] VarNames deriving Show
 data Literal = TrueLiteral | Predicate Term deriving Show
 
@@ -178,10 +178,20 @@ ruleP = RuleP <$> (headP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') tailP 
 programP :: Parser ProgramP
 programP = ProgramP <$> sepBy spaceP (ruleP <|> factP)
 
-parseFile :: String -> IO (Maybe ProgramP)
+processProgram :: ProgramP -> Program
+processProgram (ProgramP rules) = Knowledge $ map processRule rules
+
+processRule :: RuleP -> Rule
+processRule (RuleP head tails) = (\((a, b), c)->Rule a b c) $ runState ((,) <$> processLiteral head <*> mapM processLiteral tails) (VarNames [])
+
+processLiteral :: LiteralP -> State VarNames Literal
+processLiteral TrueLiteralP = return TrueLiteral
+processLiteral (PredicateP term) = Predicate <$> processTerm term
+
+parseFile :: String -> IO (Maybe Program)
 parseFile path = do text <- readFile path
                     let res = do (program, "") <- runParser programP text
-                                 return program
+                                 return $ processProgram program
                     return res
 
 main :: IO ()
