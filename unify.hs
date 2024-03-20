@@ -98,6 +98,11 @@ instance Alternative Parser where
     (Parser p1) <|> (Parser p2) = Parser p'
         where p' s = p1 s <|> p2 s
 
+finishParser :: Parser a -> String -> Maybe a
+finishParser p s = do (x, rest) <- runParser p s
+                      guard (null rest)
+                      return x
+
 oneP :: (Char -> Bool) -> Parser Char
 oneP f = Parser p
     where p (c:rest) | f c = Just (c, rest)
@@ -147,7 +152,7 @@ processTerm (FunctionP name args) = do
 
 parseTerm :: String -> Maybe (State VarNames Term)
 parseTerm s = do
-    (tp, "") <- runParser termP s -- fails if string not completely parsed
+    tp <- finishParser termP s
     return $ processTerm tp
 
 unifyStrings :: String -> String -> String
@@ -203,20 +208,34 @@ eitherToMaybe :: Either a b -> Maybe b
 eitherToMaybe (Left _) = Nothing
 eitherToMaybe (Right x) = Just x
 
+-- change the var ids of the first terms so that they are disjunct from the 2nd term
+splitVars :: [Term] -> Term -> [Term]
+splitVars ts t = map (addConstVar (maxVar t + 1)) ts
+
+maxVar :: Term -> Int
+maxVar (Var n) = n
+maxVar (Function _ []) = 0
+maxVar (Function _ ts) = maximum $ map maxVar ts
+
+addConstVar :: Int -> Term -> Term
+addConstVar c (Var n) = Var (n + c)
+addConstVar c (Function s ts) = Function s (map (addConstVar c) ts)
+
 applyRule :: Rule -> Term -> Maybe (Subst, [Term])
 applyRule (Rule head tails) q = eitherToMaybe res
-    where res = do subst <- unify head q
-                   return (subst, map (applySubst subst) tails)
+    where res = do let (newHead:newTails) = splitVars (head:tails) q
+                   subst <- unify newHead q
+                   return (subst, map (applySubst subst) newTails)
                                       
 
 parseFile :: String -> IO (Maybe Program)
 parseFile path = do text <- readFile path
-                    let res = do (program, "") <- runParser programP text
+                    let res = do program <- finishParser programP text
                                  return $ processProgram program
                     return res
 
 solveQuery :: Program -> String -> Maybe [String]
-solveQuery p s = do (qp, rest) <- runParser queryP s
+solveQuery p s = do qp <- finishParser queryP s
                     let (Query ts vn) = processQuery qp
                     let substs = solve p ts
                     return $ map (\subst -> runReader (showSubst subst) defaultVarNames) substs
