@@ -195,11 +195,14 @@ processQuery (QueryP ts) = let (terms, vn) = runState (mapM processTerm ts) (Var
 chainSubst :: Subst -> Subst -> Subst
 chainSubst (Subst vs1 f1) (Subst vs2 f2) = Subst (vs1 ++ vs2) (f1 . f2)
 
-solve :: Program -> [Term] -> [Subst]
-solve _ [] = [emptySubst]
-solve (Program rules) (q:qs) = concat $ catMaybes [solveRule r | r <- rules]
-    where solveRule rule = do (subst, qs') <- applyRule rule q
-                              return $ (`chainSubst` subst) <$> solve (Program rules) (qs' ++ qs)
+solve :: Program -> [Term] -> State Int [Subst]
+solve _ [] = return [emptySubst]
+solve (Program rules) (q:qs) = concat <$> mapM solveRule rules
+    where solveRule rule = do substMaybe <- applyRule rule q
+                              case substMaybe of
+                                  Nothing -> return []
+                                  Just (subst, qs') -> do res <- solve (Program rules) $ map (applySubst subst) (qs' ++ qs)
+                                                          return $ (`chainSubst` subst) <$> res
 
 applySubst :: Subst -> Term -> Term
 applySubst (Subst _ f) = f
@@ -208,25 +211,27 @@ eitherToMaybe :: Either a b -> Maybe b
 eitherToMaybe (Left _) = Nothing
 eitherToMaybe (Right x) = Just x
 
--- change the var ids of the first terms so that they are disjunct from the 2nd term
-splitVars :: [Term] -> Term -> [Term]
-splitVars ts t = map (addConstVar (maxVar t + 1)) ts
+maxVarOf :: Term -> Int
+maxVarOf (Var n) = n
+maxVarOf (Function _ ts) = maxVarOfList ts
 
-maxVar :: Term -> Int
-maxVar (Var n) = n
-maxVar (Function _ []) = 0
-maxVar (Function _ ts) = maximum $ map maxVar ts
+maxVarOfList :: [Term] -> Int
+maxVarOfList [] = -1
+maxVarOfList ts = maximum $ map maxVarOf ts
 
 addConstVar :: Int -> Term -> Term
 addConstVar c (Var n) = Var (n + c)
 addConstVar c (Function s ts) = Function s (map (addConstVar c) ts)
 
-applyRule :: Rule -> Term -> Maybe (Subst, [Term])
-applyRule (Rule head tails) q = eitherToMaybe res
-    where res = do let (newHead:newTails) = splitVars (head:tails) q
-                   subst <- unify newHead q
-                   return (subst, map (applySubst subst) newTails)
-                                      
+applyRule :: Rule -> Term -> State Int (Maybe (Subst, [Term]))
+applyRule (Rule head tails) q = do 
+    maxVar <- get
+    let (newHead:newTails) = map (addConstVar (maxVar + 1)) (head:tails)
+    let substMaybe = unify newHead q
+    case substMaybe of
+        Left _ -> return Nothing
+        Right subst -> do put $ maxVarOfList (newHead:newTails)
+                          return $ Just (subst, newTails)
 
 parseFile :: String -> IO (Maybe Program)
 parseFile path = do text <- readFile path
@@ -237,7 +242,7 @@ parseFile path = do text <- readFile path
 solveQuery :: Program -> String -> Maybe [String]
 solveQuery p s = do qp <- finishParser queryP s
                     let (Query ts vn) = processQuery qp
-                    let substs = solve p ts
+                    let substs = evalState (solve p ts) (maxVarOfList ts)
                     return $ map (\subst -> runReader (showSubst subst) defaultVarNames) substs
                     
 consultFile :: String -> String -> IO (Maybe [String])
