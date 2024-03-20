@@ -94,9 +94,7 @@ instance Alternative Parser where
 
     (<|>) :: Parser a -> Parser a -> Parser a
     (Parser p1) <|> (Parser p2) = Parser p'
-        where p' s = case (p1 s, p2 s) of
-                          (Just (x1, r1), Just (x2, r2)) -> if length r1 <= length r2 then p1 s else p2 s
-                          (x1, x2) -> x1 <|> x2
+        where p' s = p1 s <|> p2 s
 
 oneP :: (Char -> Bool) -> Parser Char
 oneP f = Parser p
@@ -104,19 +102,10 @@ oneP f = Parser p
           p _              = Nothing
 
 manyP :: (Char -> Bool) -> Parser String
-manyP f = Parser p
-    where p s = Just $ span f s 
-
-guarantee :: Parser a -> Parser a
-guarantee p = Parser p'
-    where p' s = do (x, _) <- runParser p s
-                    return (x, s)
+manyP f = many (oneP f)
 
 someP :: (Char -> Bool) -> Parser String
-someP f = Parser p
-    where p "" = Nothing
-          p (c:rest) | f c = Just $ span f (c:rest)
-                     | otherwise = Nothing 
+someP f = some (oneP f)
 
 charP :: Char -> Parser Char
 charP c = oneP (== c)
@@ -140,7 +129,7 @@ functionP :: Parser TermP
 functionP = FunctionP <$> (expressionP <* spaceP <* charP '(' <* spaceP) <*> sepBy (charP ',') termP <* charP ')'
 
 termP :: Parser TermP
-termP = spaceP *> (atomP <|> functionP) <* spaceP
+termP = spaceP *> (functionP <|> atomP) <* spaceP
 
 processTerm :: TermP -> State VarNames Term
 processTerm (FunctionP name []) | isUpper (head name) = do 
@@ -171,7 +160,7 @@ data Rule = Rule Literal [Literal] VarNames deriving Show
 data Literal = TrueLiteral | Predicate Term deriving Show
 
 data ProgramP = ProgramP [RuleP] deriving Show
-data RuleP = RuleP LiteralP [LiteralP] | EmptyRuleP deriving Show
+data RuleP = RuleP LiteralP [LiteralP] deriving Show
 data LiteralP = TrueLiteralP | PredicateP TermP deriving Show
 
 headP :: Parser LiteralP
@@ -181,13 +170,13 @@ tailP :: Parser LiteralP
 tailP = (TrueLiteralP <$ (spaceP *> stringP "true" <* spaceP)) <|> headP
 
 factP :: Parser RuleP
-factP = (`RuleP` []) <$> headP <* charP '.'
+factP = (`RuleP` [TrueLiteralP]) <$> headP <* charP '.'
 
 ruleP :: Parser RuleP
-ruleP = RuleP <$> (headP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') tailP <* charP '.' <* spaceP
+ruleP = RuleP <$> (headP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') tailP <* charP '.'
 
 programP :: Parser ProgramP
-programP = ProgramP <$> sepBy (charP '\n') (factP <|> ruleP <|> (EmptyRuleP <$ spaceP))
+programP = ProgramP <$> sepBy spaceP (ruleP <|> factP)
 
 parseFile :: String -> IO (Maybe ProgramP)
 parseFile path = do text <- readFile path
