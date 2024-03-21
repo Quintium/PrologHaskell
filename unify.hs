@@ -177,7 +177,7 @@ ruleP :: Parser RuleP
 ruleP = RuleP <$> (termP <* stringP ":-" <* spaceP) <*> sepBy (charP ',') termP <* charP '.'
 
 programP :: Parser ProgramP
-programP = ProgramP <$> sepBy spaceP (ruleP <|> factP)
+programP = spaceP *> (ProgramP <$> sepBy spaceP (ruleP <|> factP)) <* spaceP
 
 queryP :: Parser QueryP
 queryP = spaceP *> (QueryP <$> sepBy (charP ',') termP) <* spaceP
@@ -230,7 +230,7 @@ applyRule (Rule head tails) q = do
     let substMaybe = unify newHead q
     case substMaybe of
         Left _ -> return Nothing
-        Right subst -> do put $ maxVarOfList (newHead:newTails)
+        Right subst -> do put $ max maxVar (maxVarOfList (newHead:newTails))
                           return $ Just (subst, newTails)
 
 parseFile :: String -> IO (Maybe Program)
