@@ -1,16 +1,18 @@
 module PrologParser where
 
-import Control.Applicative
-import Control.Monad.Reader
-import Control.Monad.State
 import Data.Char
 import Data.List
 import Data.Maybe
+import Control.Applicative
+import Control.Monad.Reader
+import Control.Monad.State
 import Parser
 import Types
 
 atomP :: Parser TermP
-atomP = (`FunctionP` []) <$> expressionP ",.():-\n"
+atomP = do
+    atom <- expressionP ",.():-\n"
+    return $ FunctionP atom []
 
 functionP :: Parser TermP
 functionP = do
@@ -28,25 +30,6 @@ termP = do
     term <- functionP <|> atomP
     spaceP
     return term
-
-processTerm :: TermP -> State VarNames Term
-processTerm (FunctionP name [])
-    | isUpper (head name) || head name == '_' = do
-        (VarNames vn) <- get
-        if name `elem` vn
-            then return $ Var (fromJust (elemIndex name vn))
-            else do
-                put (VarNames (vn ++ [name]))
-                return $ Var (length vn)
-    | otherwise = return $ Function name []
-processTerm (FunctionP name args) = do
-    args' <- mapM processTerm args
-    return $ Function name args'
-
-parseTerm :: String -> Maybe (State VarNames Term)
-parseTerm s = do
-    tp <- finishParser termP s
-    return $ processTerm tp
 
 factP :: Parser RuleP
 factP = do
@@ -76,6 +59,20 @@ queryP = do
     terms <- sepBy (charP ',') termP
     spaceP
     return $ QueryP terms
+
+processTerm :: TermP -> State VarNames Term
+processTerm (FunctionP name [])
+    | isUpper (head name) || head name == '_' = do
+        (VarNames vn) <- get
+        if name `elem` vn
+            then return $ Var (fromJust (elemIndex name vn))
+            else do
+                put (VarNames (vn ++ [name]))
+                return $ Var (length vn)
+    | otherwise = return $ Function name []
+processTerm (FunctionP name args) = do
+    args' <- mapM processTerm args
+    return $ Function name args'
 
 processProgram :: ProgramP -> Program
 processProgram (ProgramP rules) = Program $ map processRule rules

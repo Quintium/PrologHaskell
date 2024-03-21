@@ -1,7 +1,7 @@
 module Types where
 
-import Control.Monad.Reader
 import Data.List
+import Control.Monad.Reader
 
 data VarNames
     = VarNames [String]

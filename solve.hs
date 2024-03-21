@@ -82,7 +82,9 @@ consultFile path q = (\mP -> mP >>= (`solveQuery` q)) <$> parseFile path
 
 unifyStrings :: String -> String -> String
 unifyStrings s1 s2 = fromMaybe "Parse error" $ do
-    t1 <- parseTerm s1
-    t2 <- parseTerm s2
+    tp1 <- finishParser termP s1
+    let t1 = processTerm tp1
+    tp2 <- finishParser termP s2
+    let t2 = processTerm tp2
     let (res, vn) = runState (unify <$> t1 <*> t2) emptyVarNames
     return $ runReader (showUnifyResult res) vn
