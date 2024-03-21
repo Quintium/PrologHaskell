@@ -35,7 +35,7 @@ substStep :: Either UnifyFailure Subst -> (Term, Term) -> Either UnifyFailure Su
 substStep unifyResult (t1, t2) = do
     s1 <- unifyResult
     s2 <- unify (applySubst s1 t1) (applySubst s1 t2)
-    return $ chainSubst s1 s2
+    return $ chainSubst s2 s1
 
 solve :: Int -> Program -> [Term] -> [Subst]
 solve _ _ [] = [emptySubst]
@@ -67,13 +67,12 @@ solveQuery p s = do
     return $ map (\subst -> runReader (showSubst subst) vn) substs
 
 consultFile :: String -> String -> IO (Maybe [String])
-consultFile path q = (\mP -> mP >>= (`solveQuery` q)) <$> parseFile path
+consultFile path q = do file <- parseFile path
+                        return $ file >>= (`solveQuery` q)
 
 unifyStrings :: String -> String -> String
 unifyStrings s1 s2 = fromMaybe "Parse error" $ do
     tp1 <- finishParser termP s1
-    let t1 = processTerm tp1
     tp2 <- finishParser termP s2
-    let t2 = processTerm tp2
-    let (res, vn) = runState (unify <$> t1 <*> t2) emptyVarNames
-    return $ runReader (showUnifyResult res) vn
+    let ((t1, t2), vn) = runState ((,) <$> processTerm tp1 <*> processTerm tp2) emptyVarNames
+    return $ runReader (showUnifyResult (unify t1 t2)) vn
