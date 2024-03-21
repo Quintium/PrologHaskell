@@ -17,7 +17,10 @@ defaultVarNames = VarNames $ map show [0..1000]
 
 showTerm :: Term -> Reader VarNames String
 showTerm (Var v)         = do VarNames names <- ask
-                              return $ names !! v
+                              if v < length names
+                                then return $ names !! v
+                                else return $ "C" ++ show v
+                              
 showTerm (Function s []) = return s
 showTerm (Function s ts) = do ts' <- mapM showTerm ts
                               return $ s ++ "(" ++ intercalate ", " ts' ++ ")"
