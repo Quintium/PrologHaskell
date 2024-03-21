@@ -32,8 +32,11 @@ showFailure ClashFailure = "Clash failure"
 showSubst :: Subst -> Reader VarNames String
 showSubst (Subst vs f) = do VarNames names <- ask
                             let namedVs = filter (< length names) vs
-                            ts <- mapM (showTerm . f . Var) namedVs
-                            return $ intercalate "; " (zipWith (\v t -> names !! v ++ " = " ++ t) namedVs ts)
+                            if null namedVs
+                                then return "true"
+                                else do ts <- mapM (showTerm . f . Var) namedVs
+                                        return $ intercalate "; " (zipWith (\v t -> names !! v ++ " = " ++ t) namedVs ts)
+                                
 
 showUnifyResult :: Either UnifyFailure Subst -> Reader VarNames String
 showUnifyResult (Left failure) = return (showFailure failure)
@@ -143,7 +146,7 @@ termP :: Parser TermP
 termP = spaceP *> (functionP <|> atomP) <* spaceP
 
 processTerm :: TermP -> State VarNames Term
-processTerm (FunctionP name []) | isUpper (head name) = do 
+processTerm (FunctionP name []) | isUpper (head name) || head name == '_' = do 
     (VarNames vn) <- get
     if name `elem` vn
         then return $ Var (fromJust (elemIndex name vn))
