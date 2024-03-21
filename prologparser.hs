@@ -13,14 +13,21 @@ atomP :: Parser TermP
 atomP = (`FunctionP` []) <$> expressionP ",.():-\n"
 
 functionP :: Parser TermP
-functionP =
-    FunctionP
-        <$> (expressionP ",.():-\n" <* spaceP <* charP '(' <* spaceP)
-        <*> sepBy (charP ',') termP
-        <* charP ')'
+functionP = do
+    name <- expressionP ",.():-\n"
+    spaceP
+    charP '('
+    spaceP
+    args <- sepBy (charP ',') termP
+    charP ')'
+    return $ FunctionP name args
 
 termP :: Parser TermP
-termP = spaceP *> (functionP <|> atomP) <* spaceP
+termP = do
+    spaceP
+    term <- functionP <|> atomP
+    spaceP
+    return term
 
 processTerm :: TermP -> State VarNames Term
 processTerm (FunctionP name [])
@@ -42,20 +49,33 @@ parseTerm s = do
     return $ processTerm tp
 
 factP :: Parser RuleP
-factP = (`RuleP` []) <$> termP <* charP '.'
+factP = do
+    term <- termP
+    charP '.'
+    return $ RuleP term []
 
 ruleP :: Parser RuleP
-ruleP =
-    RuleP
-        <$> (termP <* stringP ":-" <* spaceP)
-        <*> sepBy (charP ',') termP
-        <* charP '.'
+ruleP = do
+    head <- termP
+    stringP ":-"
+    spaceP
+    tails <- sepBy (charP ',') termP
+    charP '.'
+    return $ RuleP head tails
 
 programP :: Parser ProgramP
-programP = spaceP *> (ProgramP <$> sepBy spaceP (ruleP <|> factP)) <* spaceP
+programP = do
+    spaceP
+    rules <- sepBy spaceP (ruleP <|> factP)
+    spaceP
+    return $ ProgramP rules
 
 queryP :: Parser QueryP
-queryP = spaceP *> (QueryP <$> sepBy (charP ',') termP) <* spaceP
+queryP = do
+    spaceP
+    terms <- sepBy (charP ',') termP
+    spaceP
+    return $ QueryP terms
 
 processProgram :: ProgramP -> Program
 processProgram (ProgramP rules) = Program $ map processRule rules

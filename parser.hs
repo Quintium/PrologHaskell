@@ -67,4 +67,10 @@ expressionP :: [Char] -> Parser String
 expressionP illegalChars = someP (\c -> c `notElem` illegalChars && not (isSpace c))
 
 sepBy :: Parser a -> Parser b -> Parser [b]
-sepBy delim p = ((:) <$> p <*> many (delim *> p)) <|> pure []
+sepBy delim p =
+    ( do
+        single <- p
+        multiple <- many (delim *> p)
+        return $ single : multiple
+    )
+        <|> pure []
