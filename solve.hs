@@ -37,30 +37,19 @@ substStep unifyResult (t1, t2) = do
     s2 <- unify (applySubst s1 t1) (applySubst s1 t2)
     return $ chainSubst s1 s2
 
-solve :: Program -> [Term] -> State Int [Subst]
-solve _ [] = return [emptySubst]
-solve (Program rules) (q : qs) = do
-    maxVar <- get
-    return $ concatMap (\rule -> evalState (solveRule rule) maxVar) rules
-  where
-    solveRule rule = do
-        substMaybe <- applyRule rule q
-        case substMaybe of
-            Nothing -> return []
-            Just (subst, qs') -> do
-                res <- solve (Program rules) $ map (applySubst subst) (qs' ++ qs)
-                return $ (`chainSubst` subst) <$> res
+solve :: Int -> Program -> [Term] -> [Subst]
+solve _ _ [] = [emptySubst]
+solve maxVar (Program rules) (q : qs) = concatMap (\r -> applyRule maxVar r q (Program rules) qs) rules
 
-applyRule :: Rule -> Term -> State Int (Maybe (Subst, [Term]))
-applyRule (Rule head tails) q = do
-    maxVar <- get
+applyRule :: Int -> Rule -> Term -> Program -> [Term] -> [Subst]
+applyRule maxVar (Rule head tails) q p qs =
     let (newHead : newTails) = map (addConstVar (maxVar + 1)) (head : tails)
-    let substMaybe = unify newHead q
-    case substMaybe of
-        Left _ -> return Nothing
-        Right subst -> do
-            put $ max maxVar (maxVarOfList (newHead : newTails))
-            return $ Just (subst, newTails)
+        substMaybe = unify newHead q
+     in case substMaybe of
+            Left _ -> []
+            Right subst ->
+                let newMax = max maxVar (maxVarOfList (newHead : newTails))
+                 in (`chainSubst` subst) <$> solve newMax p (map (applySubst subst) (newTails ++ qs))
 
 parseFile :: String -> IO (Maybe Program)
 parseFile path = do
@@ -74,7 +63,7 @@ solveQuery :: Program -> String -> Maybe [String]
 solveQuery p s = do
     qp <- finishParser queryP s
     let (Query ts vn) = processQuery qp
-    let substs = evalState (solve p ts) (maxVarOfList ts)
+    let substs = solve (maxVarOfList ts) p ts
     return $ map (\subst -> runReader (showSubst subst) vn) substs
 
 consultFile :: String -> String -> IO (Maybe [String])
