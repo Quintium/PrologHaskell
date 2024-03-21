@@ -13,7 +13,7 @@ data UnifyFailure = OccurFailure | ClashFailure
 data VarNames     = VarNames [String] deriving Show
 
 defaultVarNames :: VarNames
-defaultVarNames = VarNames $ map show [0..100]
+defaultVarNames = VarNames $ map show [0..1000]
 
 showTerm :: Term -> Reader VarNames String
 showTerm (Var v)         = do VarNames names <- ask
@@ -197,7 +197,8 @@ chainSubst (Subst vs1 f1) (Subst vs2 f2) = Subst (vs1 ++ vs2) (f1 . f2)
 
 solve :: Program -> [Term] -> State Int [Subst]
 solve _ [] = return [emptySubst]
-solve (Program rules) (q:qs) = concat <$> mapM solveRule rules
+solve (Program rules) (q:qs) = do maxVar <- get
+                                  return $ concatMap (\rule -> evalState (solveRule rule) maxVar) rules
     where solveRule rule = do substMaybe <- applyRule rule q
                               case substMaybe of
                                   Nothing -> return []
