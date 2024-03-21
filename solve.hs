@@ -4,18 +4,14 @@ import Data.Maybe
 import Control.Monad.Reader
 import Control.Monad.State
 
-import PrologParser
-import Parser
 import Types
+import Parser
+import PrologParser
 
 unify :: Term -> Term -> Either UnifyFailure Subst
 unify (Var v) t                           = varSubst v t
 unify t (Var v)                           = varSubst v t
 unify (Function s1 ts1) (Function s2 ts2) = fctSubst s1 ts1 s2 ts2
-
-varEq :: Int -> Term -> Bool
-varEq v (Var v2) = v == v2
-varEq v _        = False
 
 varSubst :: Int -> Term -> Either UnifyFailure Subst
 varSubst v t | varEq v t  = Right emptySubst
@@ -38,12 +34,6 @@ substStep unifyResult (t1, t2) = do s1 <- unifyResult
                                     s2 <- unify (applySubst s1 t1) (applySubst s1 t2)
                                     return $ chainSubst s1 s2
 
-applySubst :: Subst -> Term -> Term
-applySubst (Subst _ f) = f
-
-chainSubst :: Subst -> Subst -> Subst
-chainSubst (Subst vs1 f1) (Subst vs2 f2) = Subst (vs1 ++ vs2) (f1 . f2)
-
 solve :: Program -> [Term] -> State Int [Subst]
 solve _ [] = return [emptySubst]
 solve (Program rules) (q:qs) = do maxVar <- get
@@ -53,18 +43,6 @@ solve (Program rules) (q:qs) = do maxVar <- get
                                   Nothing -> return []
                                   Just (subst, qs') -> do res <- solve (Program rules) $ map (applySubst subst) (qs' ++ qs)
                                                           return $ (`chainSubst` subst) <$> res
-
-maxVarOf :: Term -> Int
-maxVarOf (Var n) = n
-maxVarOf (Function _ ts) = maxVarOfList ts
-
-maxVarOfList :: [Term] -> Int
-maxVarOfList [] = -1
-maxVarOfList ts = maximum $ map maxVarOf ts
-
-addConstVar :: Int -> Term -> Term
-addConstVar c (Var n) = Var (n + c)
-addConstVar c (Function s ts) = Function s (map (addConstVar c) ts)
 
 applyRule :: Rule -> Term -> State Int (Maybe (Subst, [Term]))
 applyRule (Rule head tails) q = do 

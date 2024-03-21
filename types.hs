@@ -18,6 +18,10 @@ data QueryP = QueryP [TermP] deriving Show
 data Subst        = Subst [Int] (Term -> Term)
 data UnifyFailure = OccurFailure | ClashFailure
 
+varEq :: Int -> Term -> Bool
+varEq v (Var v2) = v == v2
+varEq v _        = False
+
 emptyVarNames :: VarNames
 emptyVarNames = VarNames []
 
@@ -53,3 +57,22 @@ showSubst (Subst vs f) = do VarNames names <- ask
 showUnifyResult :: Either UnifyFailure Subst -> Reader VarNames String
 showUnifyResult (Left failure) = return (showFailure failure)
 showUnifyResult (Right subst) = showSubst subst
+
+applySubst :: Subst -> Term -> Term
+applySubst (Subst _ f) = f
+
+-- assumes that substitutions are disjunct
+chainSubst :: Subst -> Subst -> Subst
+chainSubst (Subst vs1 f1) (Subst vs2 f2) = Subst (vs1 ++ vs2) (f1 . f2)
+
+maxVarOf :: Term -> Int
+maxVarOf (Var n) = n
+maxVarOf (Function _ ts) = maxVarOfList ts
+
+maxVarOfList :: [Term] -> Int
+maxVarOfList [] = -1
+maxVarOfList ts = maximum $ map maxVarOf ts
+
+addConstVar :: Int -> Term -> Term
+addConstVar c (Var n) = Var (n + c)
+addConstVar c (Function s ts) = Function s (map (addConstVar c) ts)
