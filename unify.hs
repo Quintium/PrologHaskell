@@ -28,8 +28,9 @@ showFailure ClashFailure = "Clash failure"
 
 showSubst :: Subst -> Reader VarNames String
 showSubst (Subst vs f) = do VarNames names <- ask
-                            ts <- mapM (showTerm . f . Var) vs
-                            return $ intercalate "; " (zipWith (\v t -> names !! v ++ " = " ++ t) vs ts)
+                            let namedVs = filter (< length names) vs
+                            ts <- mapM (showTerm . f . Var) namedVs
+                            return $ intercalate "; " (zipWith (\v t -> names !! v ++ " = " ++ t) namedVs ts)
 
 showUnifyResult :: Either UnifyFailure Subst -> Reader VarNames String
 showUnifyResult (Left failure) = return (showFailure failure)
@@ -244,7 +245,7 @@ solveQuery :: Program -> String -> Maybe [String]
 solveQuery p s = do qp <- finishParser queryP s
                     let (Query ts vn) = processQuery qp
                     let substs = evalState (solve p ts) (maxVarOfList ts)
-                    return $ map (\subst -> runReader (showSubst subst) defaultVarNames) substs
+                    return $ map (\subst -> runReader (showSubst subst) vn) substs
                     
 consultFile :: String -> String -> IO (Maybe [String])
 consultFile path q = (\mP -> mP >>= (`solveQuery` q)) <$> parseFile path
