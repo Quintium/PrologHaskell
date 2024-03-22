@@ -11,12 +11,12 @@ import Types
 
 atomP :: Parser TermP
 atomP = do
-    atom <- expressionP ",.():-\n"
+    atom <- expressionP ",.():-#\n"
     return $ FunctionP atom []
 
 functionP :: Parser TermP
 functionP = do
-    name <- expressionP ",.():-\n"
+    name <- expressionP ",.():-#\n"
     spaceP
     charP '('
     spaceP
@@ -65,11 +65,15 @@ queryP = do
 
 processTerm :: TermP -> State VarNames Term
 processTerm (FunctionP name [])
+    | name == "_" = do
+        (VarNames vn) <- get
+        put (VarNames (vn ++ ["_"]))
+        return $ Var (length vn)
     | isUpper (head name) || head name == '_' = do
         (VarNames vn) <- get
-        if name `elem` vn
-            then return $ Var (fromJust (elemIndex name vn))
-            else do
+        case elemIndex name vn of
+            (Just index) -> return $ Var index
+            Nothing -> do
                 put (VarNames (vn ++ [name]))
                 return $ Var (length vn)
     | otherwise = return $ Function name []

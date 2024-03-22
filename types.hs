@@ -65,7 +65,7 @@ showTerm (Var v) = do
     VarNames names <- ask
     if v < length names
         then return $ names !! v
-        else return $ "C" ++ show v
+        else return $ "#" ++ show v
 showTerm (Function s []) = return s
 showTerm (Function s ts) = do
     ts' <- mapM showTerm ts
@@ -78,14 +78,14 @@ showFailure ClashFailure = "Clash failure"
 showSubst :: Subst -> Reader VarNames String
 showSubst (Subst vs f) = do
     VarNames names <- ask
-    let namedVs = filter (< length names) vs
+    let namedVs = filter (\v -> v < length names && names !! v /= "_") vs
     if null namedVs
         then return "true"
         else do
             ts <- mapM (showTerm . f . Var) namedVs
             return $
                 intercalate
-                    "; "
+                    ", "
                     (zipWith (\v t -> names !! v ++ " = " ++ t) namedVs ts)
 
 showUnifyResult :: Either UnifyFailure Subst -> Reader VarNames String

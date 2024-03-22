@@ -2,10 +2,10 @@ module Main where
 
 import Control.Monad
 
-import Types
 import Parser
 import PrologParser
 import Solve
+import Types
 
 parseFile :: String -> IO (Maybe Program)
 parseFile path = do
@@ -25,21 +25,21 @@ queryLoop p = do
     putStr "?- "
     q <- getLine
     let resMaybe = solveQuery p q
-    (case resMaybe of
+    case resMaybe of
         (Just res) -> do
             answerLoop res
             putStrLn ""
-        Nothing -> return ())
+        Nothing -> return ()
     queryLoop p
 
 answerLoop :: [String] -> IO ()
 answerLoop [] = do
     putStrLn "false."
-answerLoop (r:res) = do
+answerLoop (r : res) = do
     putStr r
     putStr " "
     c <- getLine
-    when (head c == ';') $ answerLoop res
+    when (not (null c) && head c == ';') $ answerLoop res
 
 main :: IO ()
 main = do
