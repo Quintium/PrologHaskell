@@ -1,4 +1,4 @@
-module Unify where
+module Solve where
 
 import Control.Monad.Reader
 import Control.Monad.State
@@ -50,14 +50,6 @@ solve maxVar (Program rules) (q : qs) = concatMap applyRule rules
                     let newMax = max maxVar (maxVarOfList (newHead : newTails))
                      in (`chainSubst` subst) <$> solve newMax (Program rules) (map (applySubst subst) (newTails ++ qs))
 
-parseFile :: String -> IO (Maybe Program)
-parseFile path = do
-    text <- readFile path
-    let res = do
-            program <- finishParser programP text
-            return $ processProgram program
-    return res
-
 solveQuery :: Program -> String -> Maybe [String]
 solveQuery p s = do
     qp <- finishParser queryP s
@@ -65,11 +57,7 @@ solveQuery p s = do
     let substs = solve (maxVarOfList ts) p ts
     return $ map (\subst -> runReader (showSubst subst) vn) substs
 
-consultFile :: String -> String -> IO (Maybe [String])
-consultFile path q = do
-    file <- parseFile path
-    return $ file >>= (`solveQuery` q)
-
+-- this is not actually used, just a function for testing unification
 unifyStrings :: String -> String -> String
 unifyStrings s1 s2 = fromMaybe "Parse error" $ do
     tp1 <- finishParser termP s1

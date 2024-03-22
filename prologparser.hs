@@ -43,6 +43,7 @@ ruleP = do
     stringP ":-"
     spaceP
     tails <- sepBy (charP ',') termP
+    spaceP
     charP '.'
     return $ RuleP head tails
 
@@ -57,6 +58,8 @@ queryP :: Parser QueryP
 queryP = do
     spaceP
     terms <- sepBy (charP ',') termP
+    spaceP
+    charP '.'
     spaceP
     return $ QueryP terms
 
