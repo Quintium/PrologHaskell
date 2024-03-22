@@ -39,17 +39,16 @@ substStep unifyResult (t1, t2) = do
 
 solve :: Int -> Program -> [Term] -> [Subst]
 solve _ _ [] = [emptySubst]
-solve maxVar (Program rules) (q : qs) = concatMap (\r -> applyRule maxVar r q (Program rules) qs) rules
-
-applyRule :: Int -> Rule -> Term -> Program -> [Term] -> [Subst]
-applyRule maxVar (Rule head tails) q p qs =
-    let (newHead : newTails) = map (addConstVar (maxVar + 1)) (head : tails)
-        substMaybe = unify newHead q
-     in case substMaybe of
-            Left _ -> []
-            Right subst ->
-                let newMax = max maxVar (maxVarOfList (newHead : newTails))
-                 in (`chainSubst` subst) <$> solve newMax p (map (applySubst subst) (newTails ++ qs))
+solve maxVar (Program rules) (q : qs) = concatMap applyRule rules
+  where
+    applyRule (Rule head tails) =
+        let (newHead : newTails) = map (addConstVar (maxVar + 1)) (head : tails)
+            substMaybe = unify newHead q
+         in case substMaybe of
+                Left _ -> []
+                Right subst ->
+                    let newMax = max maxVar (maxVarOfList (newHead : newTails))
+                     in (`chainSubst` subst) <$> solve newMax (Program rules) (map (applySubst subst) (newTails ++ qs))
 
 parseFile :: String -> IO (Maybe Program)
 parseFile path = do
@@ -67,8 +66,9 @@ solveQuery p s = do
     return $ map (\subst -> runReader (showSubst subst) vn) substs
 
 consultFile :: String -> String -> IO (Maybe [String])
-consultFile path q = do file <- parseFile path
-                        return $ file >>= (`solveQuery` q)
+consultFile path q = do
+    file <- parseFile path
+    return $ file >>= (`solveQuery` q)
 
 unifyStrings :: String -> String -> String
 unifyStrings s1 s2 = fromMaybe "Parse error" $ do
