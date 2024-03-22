@@ -1,8 +1,10 @@
 module Parser where
 
-import Data.Char
 import Control.Applicative
 import Control.Monad
+import Data.Char
+import Data.List
+import Data.Maybe
 
 newtype Parser a = Parser {runParser :: String -> Maybe (a, String)}
 
@@ -66,11 +68,32 @@ spaceP = manyP isSpace
 expressionP :: [Char] -> Parser String
 expressionP illegalChars = someP (\c -> c `notElem` illegalChars && not (isSpace c))
 
-sepBy :: Parser a -> Parser b -> Parser [b]
-sepBy delim p =
-    ( do
-        single <- p
-        multiple <- many (delim *> p)
-        return $ single : multiple
+-- parses list of terms (second argument) separated by a delimiter (first argument)
+-- third argument are also counted as terms, but they are ignored (such as comments)
+sepByP :: Parser a -> Parser b -> Parser c -> Parser [b]
+sepByP delim term ignore =
+    ( catMaybes
+        <$> ( do
+                single <- Just <$> term
+                multiple <- many (delim *> ((Nothing <$ ignore) <|> (Just <$> term)))
+                return $ single : multiple
+            )
     )
         <|> pure []
+
+untilP :: String -> Parser String
+untilP end = Parser p
+  where
+    p s =
+        Just $
+            fromMaybe
+                (s, "")
+                ( do
+                    endStart <- findIndex (end `isPrefixOf`) (tails s)
+                    return $ splitAt endStart s
+                )
+
+failP :: Parser a
+failP = Parser p
+  where
+    p s = Nothing

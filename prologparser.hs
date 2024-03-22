@@ -1,26 +1,26 @@
 module PrologParser where
 
-import Data.Char
-import Data.List
-import Data.Maybe
 import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.State
+import Data.Char
+import Data.List
+import Data.Maybe
 import Parser
 import Types
 
 atomP :: Parser TermP
 atomP = do
-    atom <- expressionP ",.():-#\n"
+    atom <- expressionP ",.():-#%/*\n"
     return $ FunctionP atom []
 
 functionP :: Parser TermP
 functionP = do
-    name <- expressionP ",.():-#\n"
+    name <- expressionP ",.():-#%/*\n"
     spaceP
     charP '('
     spaceP
-    args <- sepBy (charP ',') termP
+    args <- sepByP (charP ',') termP failP
     charP ')'
     return $ FunctionP name args
 
@@ -42,22 +42,35 @@ ruleP = do
     head <- termP
     stringP ":-"
     spaceP
-    tails <- sepBy (charP ',') termP
+    tails <- sepByP (charP ',') termP failP
     spaceP
     charP '.'
     return $ RuleP head tails
 
+commentOneP :: Parser ()
+commentOneP = do
+    charP '%'
+    manyP (/= '\n')
+    return ()
+
+commentMultipleP :: Parser ()
+commentMultipleP = do
+    stringP "/*"
+    untilP "*/"
+    stringP "*/"
+    return ()
+
 programP :: Parser ProgramP
 programP = do
     spaceP
-    rules <- sepBy spaceP (ruleP <|> factP)
+    rules <- sepByP spaceP (ruleP <|> factP) (commentOneP <|> commentMultipleP)
     spaceP
     return $ ProgramP rules
 
 queryP :: Parser QueryP
 queryP = do
     spaceP
-    terms <- sepBy (charP ',') termP
+    terms <- sepByP (charP ',') termP failP
     spaceP
     charP '.'
     spaceP
