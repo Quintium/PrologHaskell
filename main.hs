@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Monad
+import Data.Maybe
 
 import Parser
 import PrologParser
@@ -20,17 +21,24 @@ consultFile path q = do
     file <- parseFile path
     return $ file >>= (`solveQuery` q)
 
+isHalt :: String -> Bool
+isHalt s = isJust $ finishParser (spaceP *> stringP "halt" *> spaceP *> charP '.' *> spaceP) s
+
 queryLoop :: Program -> IO ()
 queryLoop p = do
     putStr "?- "
     q <- getLine
-    let resMaybe = solveQuery p q
-    case resMaybe of
-        (Just res) -> do
-            answerLoop res
-            putStrLn ""
-        Nothing -> return ()
-    queryLoop p
+    if isHalt q
+        then return ()
+        else do
+            let resMaybe = solveQuery p q
+            case resMaybe of
+                (Just res) -> do
+                    answerLoop res
+                    putStrLn ""
+                Nothing -> do
+                    putStrLn "ERROR: Couldn't parse query"
+            queryLoop p
 
 answerLoop :: [String] -> IO ()
 answerLoop [] = do
@@ -48,4 +56,4 @@ main = do
     programMaybe <- parseFile fileName
     case programMaybe of
         (Just program) -> queryLoop program
-        Nothing -> putStrLn "Parse error"
+        Nothing -> putStrLn $ "ERROR: Couldn't parse " ++ fileName
