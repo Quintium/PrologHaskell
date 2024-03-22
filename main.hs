@@ -16,11 +16,6 @@ parseFile path = do
             return $ processProgram program
     return res
 
-consultFile :: String -> String -> IO (Maybe [String])
-consultFile path q = do
-    file <- parseFile path
-    return $ file >>= (`solveQuery` q)
-
 isHalt :: String -> Bool
 isHalt s = isJust $ finishParser (spaceP *> stringP "halt" *> spaceP *> charP '.' *> spaceP) s
 
